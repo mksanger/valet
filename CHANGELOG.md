@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+ - Add tests using exodus clients to github actions test workflow
+
 ### Changed
 
  - Update valet_archive_create script to remove reference to conda
@@ -17,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
  - Remove irods 4.2.10 from github actions test workflow
+ - Remove testing from `make dist` and github actions release workflow
 
 ### [1.8.0] - 2022-06-20
 
