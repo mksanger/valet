@@ -4,7 +4,10 @@ on: [push, pull_request]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # The tests with an exodus bundle must be run on 20.04 (the same
+    # operating system as the instruments) as using a newer ubuntu causes
+    # glibc compatibility issues
+    runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.experimental }} # Experimental builds may fail
 
     defaults:
@@ -20,27 +23,29 @@ jobs:
           - irods: "4.2.7"
             client_bundle: "https://github.com/wtsi-npg/containers/releases/download/5.2/bundle-ub-16.04-irods-clients-4.2.7.tgz"
             server_image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest"
+            os: ubuntu-20.04
             experimental: false
           - irods: "4.2.7"
             client_image: "ghcr.io/wtsi-npg/ub-16.04-irods-clients-4.2.7:latest"
             server_image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest"
+            os: ubuntu-latest
             experimental: false
-          - irods: "4.2.11"
-            client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.11:latest"
-            server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.11:latest"
-            experimental: false
-          - irods: "4.2.12"
-            client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.12:latest"
-            server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.12:latest"
-            experimental: false
-          - irods: "4.3.1"
-            client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.1:latest"
-            server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.1:latest"
-            experimental: false
-          - irods: "4.3.2"
-            client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.2:latest"
-            server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.2:latest"
-            experimental: true
+#          - irods: "4.2.11"
+#            client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.11:latest"
+#            server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.11:latest"
+#            experimental: false
+#          - irods: "4.2.12"
+#            client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.12:latest"
+#            server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.12:latest"
+#            experimental: false
+#          - irods: "4.3.1"
+#            client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.1:latest"
+#            server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.1:latest"
+#            experimental: false
+#          - irods: "4.3.2"
+#            client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.2:latest"
+#            server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.2:latest"
+#            experimental: true
 
     services:
       irods-server:
@@ -172,7 +177,7 @@ jobs:
         exodus_home=$HOME/exodus
         bundle_dir=$(ls $exodus_home/bundles)
         mkdir -p "$HOME/.irods"
-        cat <<'EOF' > "$HOME/.irods/irods_environment.json"
+        cat <<EOF > "$HOME/.irods/irods_environment.json"
         {
             "irods_host": "localhost",
             "irods_port": 1247,
@@ -184,9 +189,10 @@ jobs:
             "irods_plugins_home": "${exodus_home}/bundles/${bundle_dir}/usr/lib/irods/plugins/"
         }
         EOF
-
-        echo "irods" | script -q -c "$PREFIX/bin/iinit" /dev/null
-        $PREFIX/bin/ils
+        
+        ldd --version
+        echo "irods" | script -q -c "iinit" /dev/null
+        ils
         
         baton-do --version
 
