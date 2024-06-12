@@ -18,6 +18,10 @@ jobs:
       matrix:
         include:
           - irods: "4.2.7"
+            client_bundle: "https://github.com/wtsi-npg/containers/releases/download/5.2/bundle-ub-16.04-irods-clients-4.2.7.tgz"
+            server_image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest"
+            experimental: false
+          - irods: "4.2.7"
             client_image: "ghcr.io/wtsi-npg/ub-16.04-irods-clients-4.2.7:latest"
             server_image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest"
             experimental: false
@@ -62,7 +66,37 @@ jobs:
         go-version-file: "go.mod"
         cache: true
 
+    - name: "Extract clients from bundle"
+      if: ${{ matrix.client_bundle }}
+      run: |
+        wget -O client_bundle.tgz ${{ matrix.client_bundle }}
+        tar -xf client_bundle.tgz -C $HOME
+
+    - name: "Create client wrappers"
+      if: ${{ matrix.client_bundle }}
+      env:
+        client_names:   "baton-chmod baton-do baton-get baton-list baton-metamod baton-metaquery baton-put baton-specificquery iinit ils imeta"
+        PREFIX: ${{ github.workspace }}
+      run: |
+        exodus_home = $HOME/exodus
+        bundle_dir = $(ls $exodus_home/bundles)
+        for item in ${{ env.client_names }}; do
+          cat <<'EOF' > "$PREFIX/bin/$item"
+        #! /bin/bash
+
+        # This is a wrapper script allowing icommands and baton executables to find
+        # required libraries when they are moved to another system using exodus.
+
+        client_lib=${exodus_home}/bundles/${bundle_dir}/lib/x86_64-linux-gnu
+        client_usr_lib=${exodus_home}/bundles/${bundle_dir}/usr/lib/x86_64-linux-gnu
+        client_ext=${exodus_home}/bundles/${bundle_dir}/opt/irods-externals
+
+        LD_PRELOAD=$client_ext/libarchive3.3.2-0/lib/libarchive.so.16:$client_lib/libcrypto.so.1.0.0:$client_lib/libssl.so.1.0.0:$client_usr_lib/libxml2.so.2:$client_usr_lib/libicuuc.so.55:$client_usr_lib/libicudata.so.55 ${exodus_home}/bin/${item} $@
+        EOF
+        done;
+
     - name: "Install Singularity"
+      if: ${{ matrix.client_image }}
       run: |
         pkg="singularity-ce_${SINGULARITY_VERSION}-$(lsb_release -sc)_amd64.deb"
         curl -sSL -O "https://github.com/sylabs/singularity/releases/download/v${SINGULARITY_VERSION}/$pkg"
@@ -80,11 +114,13 @@ jobs:
 
     - name: "Cache Singularity images"
       uses: actions/cache@v4
+      if: ${{ matrix.client_image }}
       with:
         path: ${{ github.workspace }}/.singularity-cache
         key: ${{ runner.os }}-singularity
 
-    - name: "Install iRODS client wrappers"
+    - name: "Install iRODS Singularity client wrappers"
+      if: ${{ matrix.client_image }}
       env:
         DOCKER_IMAGE: ${{ matrix.client_image }}
         PREFIX: ${{ github.workspace }}

@@ -24,7 +24,7 @@ test:
 coverage:
 	ginkgo -r --cover -coverprofile=coverage.out
 
-dist: build test
+dist: build
 	cp README.md COPYING ${build_path}
 	mkdir ${build_path}/scripts
 	cp scripts/valet_archive_create.sh ${build_path}/scripts/
