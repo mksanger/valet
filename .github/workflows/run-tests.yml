@@ -4,7 +4,9 @@ on: [push, pull_request]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # The exodus clients must run on the same operating system as the
+    # instruments as ubuntu-latest causes glibc incompatibilities
+    runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.experimental }} # Experimental builds may fail
 
     defaults:
@@ -20,26 +22,32 @@ jobs:
           - irods: "4.2.7"
             client_bundle: "https://github.com/wtsi-npg/containers/releases/download/5.2/bundle-ub-16.04-irods-clients-4.2.7.tgz"
             server_image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest"
+            os: "ubuntu-20.04"
             experimental: false
           - irods: "4.2.7"
             client_image: "ghcr.io/wtsi-npg/ub-16.04-irods-clients-4.2.7:latest"
             server_image: "ghcr.io/wtsi-npg/ub-16.04-irods-4.2.7:latest"
+            os: ubuntu-latest
             experimental: false
           - irods: "4.2.11"
             client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.11:latest"
             server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.11:latest"
+            os: ubuntu-latest
             experimental: false
           - irods: "4.2.12"
             client_image: "ghcr.io/wtsi-npg/ub-18.04-irods-clients-4.2.12:latest"
             server_image: "ghcr.io/wtsi-npg/ub-18.04-irods-4.2.12:latest"
+            os: ubuntu-latest
             experimental: false
           - irods: "4.3.1"
             client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.1:latest"
             server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.1:latest"
+            os: ubuntu-latest
             experimental: false
           - irods: "4.3.2"
             client_image: "ghcr.io/wtsi-npg/ub-22.04-irods-clients-4.3.2:latest"
             server_image: "ghcr.io/wtsi-npg/ub-22.04-irods-4.3.2:latest"
+            os: ubuntu-latest
             experimental: true
 
     services:
@@ -66,11 +74,46 @@ jobs:
         go-version-file: "go.mod"
         cache: true
 
+    - name: "Install Singularity"
+      if: ${{ matrix.client_image }}
+      run: |
+        pkg="singularity-ce_${SINGULARITY_VERSION}-$(lsb_release -sc)_amd64.deb"
+        curl -sSL -O "https://github.com/sylabs/singularity/releases/download/v${SINGULARITY_VERSION}/$pkg"
+        curl -sSL -O "https://github.com/sylabs/singularity/releases/download/v${SINGULARITY_VERSION}/sha256sums"
+        grep "$os_release" sha256sums | sha256sum
+        sudo apt-get install -q -y "./$pkg"
+
+        # Avoid the runner's loop devices being exhausted
+        sudo singularity config global --set "max loop devices" 128
+
+        # Enable DBus for this user, so that rootless cgroups works and we can create
+        # Singularity service instances. See https://github.com/containers/podman/issues/5443
+        systemctl --user enable --now dbus.socket
+        echo DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus" >> $GITHUB_ENV
+
+    - name: "Cache Singularity images"
+      uses: actions/cache@v4
+      if: ${{ matrix.client_image }}
+      with:
+        path: ${{ github.workspace }}/.singularity-cache
+        key: ${{ runner.os }}-singularity
+
     - name: "Extract Exodus clients from bundle"
       if: ${{ matrix.client_bundle }}
       run: |
         wget -O client_bundle.tgz ${{ matrix.client_bundle }}
         tar -xf client_bundle.tgz -C $HOME
+
+    - name: "Install iRODS Singularity client wrappers"
+      if: ${{ matrix.client_image }}
+      env:
+        DOCKER_IMAGE: ${{ matrix.client_image }}
+        PREFIX: ${{ github.workspace }}
+        SINGULARITY_CACHEDIR: ${{ github.workspace }}/.singularity-cache
+      run: |
+        # Use -s option for the wrappers to enable re-usable service instances
+        singularity exec docker://$DOCKER_IMAGE singularity-wrapper -s -p $PREFIX install
+        echo "$PREFIX/bin" >> $GITHUB_PATH
 
     - name: "Create Exodus client wrappers"
       if: ${{ matrix.client_bundle }}
@@ -96,41 +139,6 @@ jobs:
         EOF
         chmod 755 "$PREFIX/bin/$item"
         done;
-        echo "$PREFIX/bin" >> $GITHUB_PATH
-
-    - name: "Install Singularity"
-      if: ${{ matrix.client_image }}
-      run: |
-        pkg="singularity-ce_${SINGULARITY_VERSION}-$(lsb_release -sc)_amd64.deb"
-        curl -sSL -O "https://github.com/sylabs/singularity/releases/download/v${SINGULARITY_VERSION}/$pkg"
-        curl -sSL -O "https://github.com/sylabs/singularity/releases/download/v${SINGULARITY_VERSION}/sha256sums"
-        grep "$os_release" sha256sums | sha256sum
-        sudo apt-get install -q -y "./$pkg"
-
-        # Avoid the runner's loop devices being exhausted
-        sudo singularity config global --set "max loop devices" 128
-
-        # Enable DBus for this user, so that rootless cgroups works and we can create
-        # Singularity service instances. See https://github.com/containers/podman/issues/5443
-        systemctl --user enable --now dbus.socket
-        echo DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus" >> $GITHUB_ENV
-
-    - name: "Cache Singularity images"
-      uses: actions/cache@v4
-      if: ${{ matrix.client_image }}
-      with:
-        path: ${{ github.workspace }}/.singularity-cache
-        key: ${{ runner.os }}-singularity
-
-    - name: "Install iRODS Singularity client wrappers"
-      if: ${{ matrix.client_image }}
-      env:
-        DOCKER_IMAGE: ${{ matrix.client_image }}
-        PREFIX: ${{ github.workspace }}
-        SINGULARITY_CACHEDIR: ${{ github.workspace }}/.singularity-cache
-      run: |
-        # Use -s option for the wrappers to enable re-usable service instances
-        singularity exec docker://$DOCKER_IMAGE singularity-wrapper -s -p $PREFIX install
         echo "$PREFIX/bin" >> $GITHUB_PATH
 
     - name: "Configure iRODS clients for Singularity wrappers"
@@ -172,7 +180,7 @@ jobs:
         exodus_home=$HOME/exodus
         bundle_dir=$(ls $exodus_home/bundles)
         mkdir -p "$HOME/.irods"
-        cat <<'EOF' > "$HOME/.irods/irods_environment.json"
+        cat <<EOF > "$HOME/.irods/irods_environment.json"
         {
             "irods_host": "localhost",
             "irods_port": 1247,
