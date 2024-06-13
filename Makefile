@@ -19,7 +19,7 @@ lint:
 check: test
 
 test:
-	ginkgo -r --race -vv
+	ginkgo -r --race -vv -timeout 300s
 
 coverage:
 	ginkgo -r --cover -coverprofile=coverage.out
